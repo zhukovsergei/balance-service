@@ -41,6 +41,18 @@ services:
       - zookeeper_data:/var/lib/zookeeper/data
       - zookeeper_log:/var/log/zookeeper
 
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: balance-kafka-ui
+    ports:
+      - "8090:8080"
+    depends_on:
+      - kafka
+      - zookeeper
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local-balance-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9093
+
 volumes:
   postgres_data:
   kafka_data:
