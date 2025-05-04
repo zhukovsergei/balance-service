@@ -2,6 +2,7 @@ package ch.fdsgn.balance_service.controller;
 
 import ch.fdsgn.balance_service.command.DepositFundsCommand;
 import ch.fdsgn.balance_service.controller.dto.DepositRequestDto;
+import ch.fdsgn.balance_service.controller.dto.AccountBalanceDto;
 import ch.fdsgn.balance_service.readmodel.entity.AccountBalance;
 import ch.fdsgn.balance_service.service.AccountCommandService;
 import ch.fdsgn.balance_service.service.AccountQueryService;
@@ -54,12 +55,13 @@ public class AccountController {
     }
 
     @GetMapping("/accounts/{accountId}/balance")
-    public ResponseEntity<AccountBalance> getBalance(@PathVariable String accountId) {
+    public ResponseEntity<AccountBalanceDto> getBalance(@PathVariable String accountId) {
         log.info("Received balance query for account {}", accountId);
 
         Optional<AccountBalance> balanceOptional = accountQueryService.getAccountBalance(accountId);
 
         return balanceOptional
+                .map(AccountBalanceDto::createFromEntity)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
