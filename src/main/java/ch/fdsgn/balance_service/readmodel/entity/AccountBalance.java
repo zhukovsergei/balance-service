@@ -8,6 +8,9 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
 
 @Entity
 @Table(name = "account_balances")
@@ -27,14 +30,26 @@ public class AccountBalance {
     @Column(name = "last_updated_at", nullable = false)
     private Instant lastUpdatedAt;
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "processed_event_ids", joinColumns = @JoinColumn(name = "account_balance_id"))
+    @Column(name = "id", nullable = false)
+    private Set<UUID> processedEventIds = new HashSet<>();
+
     @PrePersist
     @PreUpdate
     public void updateTimestamp() {
         lastUpdatedAt = Instant.now();
     }
 
-    public AccountBalance(String accountId, BigDecimal initialBalance) {
+    public AccountBalance(String accountId, BigDecimal initialBalance, UUID firstEventId) {
         this.id = accountId;
         this.currentBalance = initialBalance;
+        if (firstEventId != null) {
+            this.processedEventIds.add(firstEventId);
+        }
+    }
+
+    public AccountBalance(String accountId, BigDecimal initialBalance) {
+        this(accountId, initialBalance, null);
     }
 } 

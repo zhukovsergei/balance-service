@@ -33,20 +33,27 @@ public class AccountBalanceProjector {
     public void handleFundsDeposited(@Payload FundsDepositedEvent event) {
         try {
             AccountBalance accountBalance = accountBalanceRepository.findById(event.accountId())
-                    .orElseGet(() -> {
-                        log.info("Creating new balance record for accountId: {}", event.accountId());
-                        return new AccountBalance(event.accountId(), event.amount());
-                    });
+                    .orElse(null);
 
-            if (accountBalance.getLastUpdatedAt() != null) {
-                 log.info("Updating existing balance for accountId: {}. Current: {}, Adding: {}",
-                         event.accountId(), accountBalance.getCurrentBalance(), event.amount());
-                 accountBalance.setCurrentBalance(accountBalance.getCurrentBalance().add(event.amount()));
+            if (accountBalance != null && accountBalance.getProcessedEventIds().contains(event.eventId())) {
+                log.warn("Duplicate event detected [eventId={}]. Skipping projection.", event.eventId());
+                return;
             }
 
+            if (accountBalance == null) {
+                accountBalance = new AccountBalance(
+                        event.accountId(),
+                        event.amount(),
+                        event.eventId()
+                );
+            } else {
+                log.info("Updating existing balance for accountId: {}. Current: {}, Adding: {}",
+                         event.accountId(), accountBalance.getCurrentBalance(), event.amount());
+                accountBalance.setCurrentBalance(accountBalance.getCurrentBalance().add(event.amount()));
+                accountBalance.getProcessedEventIds().add(event.eventId());
+            }
 
             accountBalanceRepository.save(accountBalance);
-
         } catch (Exception e) {
             log.error("Failed to project event {}: {}", event, e.getMessage(), e);
         }
