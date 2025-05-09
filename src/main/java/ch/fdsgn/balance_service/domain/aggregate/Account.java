@@ -1,7 +1,10 @@
 package ch.fdsgn.balance_service.domain.aggregate;
 
 import ch.fdsgn.balance_service.command.DepositFundsCommand;
+import ch.fdsgn.balance_service.command.WithdrawFundsCommand;
+import ch.fdsgn.balance_service.domain.exception.InsufficientFundsException;
 import ch.fdsgn.balance_service.event.FundsDepositedEvent;
+import ch.fdsgn.balance_service.event.FundsWithdrawnEvent;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
@@ -28,13 +31,32 @@ public class Account {
 
     public void handle(DepositFundsCommand command) {
         if (this.accountId == null) {
-             throw new IllegalStateException("Account not initialized properly, accountId is null.");
+            throw new IllegalStateException("Can not be null.");
         }
         if (!this.accountId.equals(command.accountId())) {
-            throw new IllegalArgumentException("Command accountId [" + command.accountId() + "] does not match Aggregate accountId [" + this.accountId + "]");
+            throw new IllegalArgumentException("Wrong accountId");
         }
 
         FundsDepositedEvent event = new FundsDepositedEvent(
+                command.accountId(),
+                command.amount()
+        );
+
+        apply(event);
+        pendingEvents.add(event);
+    }
+
+    public void handle(WithdrawFundsCommand command) {
+        if (this.accountId == null) {
+            throw new IllegalStateException("Can not be null.");
+        }
+        if (!this.accountId.equals(command.accountId())) {
+        }
+        if (this.balance.compareTo(command.amount()) < 0) {
+            throw new InsufficientFundsException("Insufficient funds for account " + this.accountId );
+        }
+
+        FundsWithdrawnEvent event = new FundsWithdrawnEvent(
                 command.accountId(),
                 command.amount()
         );
@@ -52,6 +74,14 @@ public class Account {
         this.balance = this.balance.add(event.amount());
     }
 
+    private void apply(FundsWithdrawnEvent event) {
+        if (this.accountId == null) {
+        }
+        if (this.accountId != null && !this.accountId.equals(event.accountId())) {
+             throw new IllegalStateException("Attempting to apply FundsWithdrawnEvent for account " + event.accountId() + " to account " + this.accountId);
+        }
+        this.balance = this.balance.subtract(event.amount());
+    }
 
     public List<Object> getAndClearPendingEvents() {
         List<Object> events = new ArrayList<>(pendingEvents);
