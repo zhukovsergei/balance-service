@@ -4,6 +4,7 @@ downv: docker-down-clear
 stop: docker-stop
 build: docker-build
 rest: down up
+restv: downv up
 restb: down build up
 bash: docker-bash
 
