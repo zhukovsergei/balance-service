@@ -19,23 +19,24 @@ public class AccountCommandService {
     private static final Logger log = LoggerFactory.getLogger(AccountCommandService.class);
 
     private final EventPublisher eventPublisher;
+    private final AccountEventStore accountEventStore;
 
     private final ConcurrentHashMap<String, Account> accountStore = new ConcurrentHashMap<>();
 
 
     @Autowired
-    public AccountCommandService(EventPublisher eventPublisher) {
+    public AccountCommandService(EventPublisher eventPublisher, AccountEventStore accountEventStore) {
         this.eventPublisher = eventPublisher;
+        this.accountEventStore = accountEventStore;
     }
 
     @Transactional
     public void handle(DepositFundsCommand command) {
         log.info("Handling command: {}", command);
 
-        // TODO: replace for Event Store (Kafka)
         Account account = accountStore.computeIfAbsent(command.accountId(), accountId -> {
-            log.warn("Account {} not found", accountId);
-            return new Account(accountId);
+            log.info("Rebuilding depo for accountId {}", accountId);
+            return accountEventStore.rebuildAccount(accountId);
         });
 
         try {
@@ -45,26 +46,22 @@ public class AccountCommandService {
             throw new RuntimeException("Failed to handle command: " + e.getMessage(), e);
         }
 
-
         List<Object> pendingEvents = account.getAndClearPendingEvents();
         if (!pendingEvents.isEmpty()) {
             for (Object event : pendingEvents) {
                 eventPublisher.publish(command.accountId(), event);
             }
-            // TODO: cache update
-             accountStore.put(command.accountId(), account);
+            accountStore.put(command.accountId(), account);
         } else {
-            log.warn("No events for command: {}", command);
+            log.warn("No events for deposit");
         }
     }
 
     @Transactional
     public void handle(WithdrawFundsCommand command) {
-
-        // TODO: repl on load Event Store (Kafka)
         Account account = accountStore.computeIfAbsent(command.accountId(), accountId -> {
-            log.warn("Account {} not found", accountId);
-            return new Account(accountId);
+            log.info("Rebuilding witdraw for accountId {}", accountId);
+            return accountEventStore.rebuildAccount(accountId);
         });
 
         try {
@@ -83,7 +80,7 @@ public class AccountCommandService {
             }
             accountStore.put(command.accountId(), account);
         } else {
-            log.warn("No events generated for withdraw command: {}", command);
+            log.warn("No events for withdraw");
         }
     }
 

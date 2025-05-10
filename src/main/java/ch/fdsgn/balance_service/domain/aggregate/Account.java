@@ -65,7 +65,7 @@ public class Account {
         pendingEvents.add(event);
     }
 
-    private void apply(FundsDepositedEvent event) {
+    public void apply(FundsDepositedEvent event) {
          if (this.accountId == null) {
          }
          if (this.accountId != null && !this.accountId.equals(event.accountId())) {
@@ -74,7 +74,7 @@ public class Account {
         this.balance = this.balance.add(event.amount());
     }
 
-    private void apply(FundsWithdrawnEvent event) {
+    public void apply(FundsWithdrawnEvent event) {
         if (this.accountId == null) {
         }
         if (this.accountId != null && !this.accountId.equals(event.accountId())) {
