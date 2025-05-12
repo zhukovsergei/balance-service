@@ -21,4 +21,8 @@ public record FundsWithdrawnEvent(
         this.amount = amount;
         this.timestamp = timestamp;
     }
+
+    public FundsWithdrawnEvent(UUID eventId, String accountId, BigDecimal amount) {
+        this(eventId, accountId, amount, Instant.now());
+    }
 } 

@@ -14,6 +14,10 @@ public record FundsDepositedEvent(
         this(UUID.randomUUID(), accountId, amount, Instant.now());
     }
 
+    public FundsDepositedEvent(UUID eventId, String accountId, BigDecimal amount) {
+        this(eventId, accountId, amount, Instant.now());
+    }
+
     public FundsDepositedEvent(UUID eventId, String accountId, BigDecimal amount, Instant timestamp) {
         this.eventId = eventId;
         this.accountId = accountId;
