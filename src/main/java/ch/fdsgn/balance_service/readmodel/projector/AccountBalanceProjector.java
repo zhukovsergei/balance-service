@@ -1,5 +1,6 @@
 package ch.fdsgn.balance_service.readmodel.projector;
 
+import ch.fdsgn.balance_service.event.EventType;
 import ch.fdsgn.balance_service.event.FundsDepositedEvent;
 import ch.fdsgn.balance_service.event.FundsWithdrawnEvent;
 import ch.fdsgn.balance_service.readmodel.entity.AccountBalance;
@@ -89,10 +90,10 @@ public class AccountBalanceProjector {
                  return;
             }
 
-            if ("DEPOSIT".equals(eventType)) {
+            if (EventType.DEPOSIT.getValue().equals(eventType)) {
                 FundsDepositedEvent event = new FundsDepositedEvent(eventId, accountId, amount, timestamp, eventType);
                 processFundsDeposited(event);
-            } else if ("WITHDRAWAL".equals(eventType)) {
+            } else if (EventType.WITHDRAWAL.getValue().equals(eventType)) {
                 FundsWithdrawnEvent event = new FundsWithdrawnEvent(eventId, accountId, amount, timestamp, eventType);
                 processFundsWithdrawn(event);
             } else {

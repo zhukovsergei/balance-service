@@ -1,5 +1,6 @@
 package ch.fdsgn.balance_service.service;
 
+import ch.fdsgn.balance_service.event.EventType;
 import ch.fdsgn.balance_service.event.FundsDepositedEvent;
 import ch.fdsgn.balance_service.event.FundsWithdrawnEvent;
 import ch.fdsgn.balance_service.readmodel.entity.AccountBalance;
@@ -110,9 +111,9 @@ public class EventReplayService {
                             return;
                         }
 
-                        if ("DEPOSIT".equals(eventType)) {
+                        if (EventType.DEPOSIT.getValue().equals(eventType)) {
                             replayFundsDeposited(new FundsDepositedEvent(eventId, accountId, amount, timestamp));
-                        } else if ("WITHDRAWAL".equals(eventType)) {
+                        } else if (EventType.WITHDRAWAL.getValue().equals(eventType)) {
                             replayFundsWithdrawn(new FundsWithdrawnEvent(eventId, accountId, amount, timestamp));
                         }
 

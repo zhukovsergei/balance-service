@@ -12,14 +12,14 @@ public record FundsDepositedEvent(
         String eventType
 ) {
     public FundsDepositedEvent(String accountId, BigDecimal amount) {
-        this(UUID.randomUUID(), accountId, amount, Instant.now(), "DEPOSIT");
+        this(UUID.randomUUID(), accountId, amount, Instant.now(), EventType.DEPOSIT.getValue());
     }
 
     public FundsDepositedEvent(UUID eventId, String accountId, BigDecimal amount) {
-        this(eventId, accountId, amount, Instant.now(), "DEPOSIT");
+        this(eventId, accountId, amount, Instant.now(), EventType.DEPOSIT.getValue());
     }
 
     public FundsDepositedEvent(UUID eventId, String accountId, BigDecimal amount, Instant timestamp) {
-        this(eventId, accountId, amount, timestamp, "DEPOSIT");
+        this(eventId, accountId, amount, timestamp, EventType.DEPOSIT.getValue());
     }
 } 

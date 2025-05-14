@@ -1,6 +1,7 @@
 package ch.fdsgn.balance_service.service;
 
 import ch.fdsgn.balance_service.domain.aggregate.Account;
+import ch.fdsgn.balance_service.event.EventType;
 import ch.fdsgn.balance_service.event.FundsDepositedEvent;
 import ch.fdsgn.balance_service.event.FundsWithdrawnEvent;
 import org.apache.kafka.clients.consumer.Consumer;
@@ -109,9 +110,9 @@ public class AccountEventStore {
                             return;
                         }
 
-                        if ("DEPOSIT".equals(eventType)) {
+                        if (EventType.DEPOSIT.getValue().equals(eventType)) {
                             account.apply(new FundsDepositedEvent(eventId, accountId, amount, timestamp));
-                        } else if ("WITHDRAWAL".equals(eventType)) {
+                        } else if (EventType.WITHDRAWAL.getValue().equals(eventType)) {
                             account.apply(new FundsWithdrawnEvent(eventId, accountId, amount, timestamp));
                         }
 
