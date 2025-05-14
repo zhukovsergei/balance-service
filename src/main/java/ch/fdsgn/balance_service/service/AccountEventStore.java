@@ -107,9 +107,9 @@ public class AccountEventStore {
                         }
 
                         if ("DEPOSIT".equals(eventType)) {
-                            account.apply(new FundsDepositedEvent(eventId, accountId, amount, timestamp, eventType));
+                            account.apply(new FundsDepositedEvent(eventId, accountId, amount, timestamp));
                         } else if ("WITHDRAWAL".equals(eventType)) {
-                            account.apply(new FundsWithdrawnEvent(eventId, accountId, amount, timestamp, eventType));
+                            account.apply(new FundsWithdrawnEvent(eventId, accountId, amount, timestamp));
                         }
 
                     } catch (Exception e) {

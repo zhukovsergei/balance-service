@@ -105,13 +105,11 @@ public class EventReplayService {
                         }
 
                         if ("DEPOSIT".equals(eventType)) {
-                            replayFundsDeposited(new FundsDepositedEvent(eventId, accountId, amount, timestamp, eventType));
+                            replayFundsDeposited(new FundsDepositedEvent(eventId, accountId, amount, timestamp));
                         } else if ("WITHDRAWAL".equals(eventType)) {
-                            replayFundsWithdrawn(new FundsWithdrawnEvent(eventId, accountId, amount, timestamp, eventType));
+                            replayFundsWithdrawn(new FundsWithdrawnEvent(eventId, accountId, amount, timestamp));
                         }
-                        else {
-                            log.error("EventReplay: Unknown event type: {}", eventType);
-                        }
+
                     } catch (Exception e) {
                         log.error("Error: {}", e.getMessage(), e);
                     }
