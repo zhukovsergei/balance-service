@@ -14,58 +14,128 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 public class AccountEventStore {
     private static final Logger log = LoggerFactory.getLogger(AccountEventStore.class);
     private static final String ACCOUNT_EVENTS_TOPIC = "account-events";
-    private static final String REBUILD_GROUP_ID = "account-rebuild-group";
+    private static final String REBUILD_GROUP_ID_PREFIX = "account-rebuild-group-";
 
     private final String bootstrapServers;
+    // private final ObjectMapper objectMapper;
 
-    public AccountEventStore(@Value("${spring.kafka.bootstrap-servers}") String bootstrapServers) {
+    public AccountEventStore(@Value("${spring.kafka.bootstrap-servers}") String bootstrapServers
+                             /* ObjectMapper objectMapper */) {
         this.bootstrapServers = bootstrapServers;
+        // this.objectMapper = objectMapper;
     }
 
     public Account rebuildAccount(String accountId) {
         Account account = new Account(accountId);
-        try (Consumer<String, Object> consumer = createConsumer()) {
+
+        try (Consumer<String, Map> consumer = createConsumerForRebuild()) {
             consumer.subscribe(Collections.singletonList(ACCOUNT_EVENTS_TOPIC));
-            while (true) {
-                ConsumerRecords<String, Object> records = consumer.poll(Duration.ofMillis(100));
+
+            int emptyPolls = 0;
+            final int maxEmptyPolls = 3;
+
+            while (emptyPolls < maxEmptyPolls) {
+                ConsumerRecords<String, Map> records = consumer.poll(Duration.ofMillis(500));
                 if (records.isEmpty()) {
-                    break;
+                    emptyPolls++;
+                    continue;
                 }
+                emptyPolls = 0;
+
                 records.forEach(record -> {
-                    Object event = record.value();
-                    if (event instanceof FundsDepositedEvent depositedEvent && depositedEvent.accountId().equals(accountId)) {
-                        account.apply(depositedEvent);
-                    } else if (event instanceof FundsWithdrawnEvent withdrawnEvent && withdrawnEvent.accountId().equals(accountId)) {
-                        account.apply(withdrawnEvent);
+                    if (!accountId.equals(record.key())) {
+                        return;
+                    }
+
+                    Map<String, Object> eventData = record.value();
+                    if (eventData == null) {
+                        log.warn("eventData is null");
+                        return;
+                    }
+
+                    String eventType = (String) eventData.get("eventType");
+                    if (eventType == null) {
+                        log.warn("eventType is null");
+                        return;
+                    }
+
+                    try {
+                        UUID eventId = UUID.fromString((String) eventData.get("eventId"));
+                        // String recordAccountId = (String) eventData.get("accountId");
+
+                        Object amountObj = eventData.get("amount");
+                        BigDecimal amount;
+                        if (amountObj instanceof Number) {
+                            amount = new BigDecimal(amountObj.toString());
+                        } else if (amountObj instanceof String) {
+                            amount = new BigDecimal((String) amountObj);
+                        } else if (amountObj instanceof BigDecimal) {
+                            amount = (BigDecimal) amountObj;
+                        } else {
+                            log.error("Error");
+                            return;
+                        }
+
+                        Object timestampObj = eventData.get("timestamp");
+                        Instant timestamp;
+                        if (timestampObj instanceof Number) {
+                            timestamp = Instant.ofEpochMilli(((Number) timestampObj).longValue());
+                        } else if (timestampObj instanceof String) {
+                             try {
+                                timestamp = Instant.parse((String) timestampObj);
+                            } catch (Exception e) {
+                                try {
+                                    timestamp = Instant.ofEpochMilli(Long.parseLong((String) timestampObj));
+                                } catch (NumberFormatException nfe) {
+                                    return;
+                                }
+                            }
+                        } else if (timestampObj instanceof Instant) {
+                            timestamp = (Instant) timestampObj;
+                        }
+
+                        if ("DEPOSIT".equals(eventType)) {
+                            account.apply(new FundsDepositedEvent(eventId, accountId, amount, timestamp, eventType));
+                        } else if ("WITHDRAWAL".equals(eventType)) {
+                            account.apply(new FundsWithdrawnEvent(eventId, accountId, amount, timestamp, eventType));
+                        }
+
+                    } catch (Exception e) {
+                        log.error("Error: {}", e.getMessage(), e);
                     }
                 });
             }
         } catch (Exception e) {
-            log.error("Error rebuilding: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to rebuild account aggregate", e);
+            throw new RuntimeException("Failed to rebuild account aggregate for " + accountId, e);
         }
-        log.info("Account aggregate rebuilt for id {}", accountId);
+
+        log.info("Account aggregate rebuilt for id: {}", accountId);
         return account;
     }
 
-    private Consumer<String, Object> createConsumer() {
+    private Consumer<String, Map> createConsumerForRebuild() {
         Map<String, Object> props = new HashMap<>();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, REBUILD_GROUP_ID);
-        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, REBUILD_GROUP_ID_PREFIX + UUID.randomUUID().toString());
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        props.put(JsonDeserializer.TRUSTED_PACKAGES, "ch.fdsgn.balance_service.event");
-        props.put(JsonDeserializer.USE_TYPE_INFO_HEADERS, true);
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class.getName());
+        props.put(JsonDeserializer.USE_TYPE_INFO_HEADERS, false);
+        props.put(JsonDeserializer.VALUE_DEFAULT_TYPE, java.util.Map.class.getName());
+        props.put(JsonDeserializer.TRUSTED_PACKAGES, "java.util,java.lang,java.math");
+
         return new KafkaConsumer<>(props);
     }
 } 

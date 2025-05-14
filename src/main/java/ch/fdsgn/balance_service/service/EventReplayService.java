@@ -16,7 +16,9 @@ import org.springframework.kafka.support.serializer.JsonDeserializer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -26,7 +28,7 @@ import java.util.UUID;
 public class EventReplayService {
     private static final Logger log = LoggerFactory.getLogger(EventReplayService.class);
     private static final String ACCOUNT_EVENTS_TOPIC = "account-events";
-    private static final String REPLAY_GROUP_ID = "balance-replay-group";
+    private static final String REPLAY_GROUP_ID_PREFIX = "balance-replay-group-";
 
     private final AccountBalanceRepository accountBalanceRepository;
     private final String bootstrapServers;
@@ -41,114 +43,131 @@ public class EventReplayService {
 
     @Transactional
     public void replayEvents() {
-
-        try (Consumer<String, Object> consumer = createConsumer()) {
+        try (Consumer<String, Map> consumer = createReplayConsumer()) {
             consumer.subscribe(Collections.singletonList(ACCOUNT_EVENTS_TOPIC));
-            
             accountBalanceRepository.deleteAll();
 
-            while (true) {
-                ConsumerRecords<String, Object> records = consumer.poll(Duration.ofMillis(100));
+            int emptyPolls = 0;
+            final int maxEmptyPolls = 3;
+
+            while (emptyPolls < maxEmptyPolls) {
+                ConsumerRecords<String, Map> records = consumer.poll(Duration.ofMillis(500));
                 if (records.isEmpty()) {
-                    break;
+                    emptyPolls++;
+                    continue;
                 }
-                
+                emptyPolls = 0;
+
                 records.forEach(record -> {
-                    Object event = record.value();
-                    if (event instanceof FundsDepositedEvent depositedEvent) {
-                        replayFundsDeposited(depositedEvent);
-                    } else if (event instanceof FundsWithdrawnEvent withdrawnEvent) {
-                        replayFundsWithdrawn(withdrawnEvent);
-                    } else if (event instanceof java.util.Map map) {
+                    Map<String, Object> eventData = record.value();
+                    if (eventData == null) {
+                        log.warn("eventData is null");
+                        return;
+                    }
 
-                        try {
-                            if (map.containsKey("amount") && map.containsKey("accountId") && map.containsKey("eventId")) {
-                                String accountId = (String) map.get("accountId");
-                                java.math.BigDecimal amount = new java.math.BigDecimal(map.get("amount").toString());
-                                java.util.UUID eventId = java.util.UUID.fromString((String) map.get("eventId"));
+                    String eventType = (String) eventData.get("eventType");
+                    if (eventType == null) {
+                        log.warn("eventType is null");
+                        return;
+                    }
 
-                                String type = (String) map.get("__TypeId__");
-                                if (type == null && record.headers() != null) {
-                                    org.apache.kafka.common.header.Header header = record.headers().lastHeader("__TypeId__");
-                                    if (header != null) {
-                                        type = new String(header.value());
-                                    }
-                                }
-                                if (type != null && type.contains("FundsDepositedEvent")) {
-                                    replayFundsDeposited(new ch.fdsgn.balance_service.event.FundsDepositedEvent(eventId, accountId, amount));
-                                } else if (type != null && type.contains("FundsWithdrawnEvent")) {
-                                    replayFundsWithdrawn(new ch.fdsgn.balance_service.event.FundsWithdrawnEvent(eventId, accountId, amount));
-                                } else {
-                                    log.warn("Unknown event type in map: {}", type);
+                    try {
+                        UUID eventId = UUID.fromString((String) eventData.get("eventId"));
+                        String accountId = (String) eventData.get("accountId");
+
+                        Object amountObj = eventData.get("amount");
+                        BigDecimal amount;
+                        if (amountObj instanceof Number) {
+                            amount = new BigDecimal(amountObj.toString());
+                        } else if (amountObj instanceof String) {
+                            amount = new BigDecimal((String) amountObj);
+                        } else if (amountObj instanceof BigDecimal) {
+                            amount = (BigDecimal) amountObj;
+                        }
+
+
+                        Object timestampObj = eventData.get("timestamp");
+                        Instant timestamp;
+                         if (timestampObj instanceof Number) {
+                            timestamp = Instant.ofEpochMilli(((Number) timestampObj).longValue());
+                        } else if (timestampObj instanceof String) {
+                             try {
+                                timestamp = Instant.parse((String) timestampObj);
+                            } catch (Exception e) {
+                                try {
+                                    timestamp = Instant.ofEpochMilli(Long.parseLong((String) timestampObj));
+                                } catch (NumberFormatException nfe) {
+                                    return;
                                 }
                             }
-                        } catch (Exception ex) {
-                            log.error("Failed: {}", map, ex);
+                        } else if (timestampObj instanceof Instant) {
+                            timestamp = (Instant) timestampObj;
                         }
-                    } else {
-                        log.warn("Unknown event: {}", event.getClass().getName());
+
+                        if ("DEPOSIT".equals(eventType)) {
+                            replayFundsDeposited(new FundsDepositedEvent(eventId, accountId, amount, timestamp, eventType));
+                        } else if ("WITHDRAWAL".equals(eventType)) {
+                            replayFundsWithdrawn(new FundsWithdrawnEvent(eventId, accountId, amount, timestamp, eventType));
+                        }
+                        else {
+                            log.error("EventReplay: Unknown event type: {}", eventType);
+                        }
+                    } catch (Exception e) {
+                        log.error("Error: {}", e.getMessage(), e);
                     }
                 });
             }
-            
         } catch (Exception e) {
-            log.error("Error: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to replay events", e);
+            throw new RuntimeException("Error to replay events", e);
         }
     }
 
     private void replayFundsDeposited(FundsDepositedEvent event) {
         AccountBalance accountBalance = accountBalanceRepository.findById(event.accountId())
-                .orElse(null);
+                .orElseGet(() -> {
+                    return new AccountBalance(event.accountId(), event.amount(), event.eventId());
+                });
 
-        if (accountBalance == null) {
-
-            accountBalance = new AccountBalance(event.accountId(), event.amount(), event.eventId());
-            log.info("Creating new balance for accountId: {}", event.accountId());
-        } else {
-
-            if (accountBalance.getProcessedEventIds().contains(event.eventId())) {
-                return;
-            }
-            log.info("Updating balance for accountId: {}", event.accountId());
+        if (accountBalance.getId() != null && !accountBalance.getProcessedEventIds().contains(event.eventId())) {
             accountBalance.setCurrentBalance(accountBalance.getCurrentBalance().add(event.amount()));
             accountBalance.getProcessedEventIds().add(event.eventId());
-        }
-
-        if (!accountBalance.getProcessedEventIds().contains(event.eventId())) {
-            accountBalance.getProcessedEventIds().add(event.eventId());
+        } else if (accountBalance.getId() != null && accountBalance.getProcessedEventIds().contains(event.eventId())) {
+            log.debug("EventId {} already processed", event.eventId());
         }
         accountBalanceRepository.save(accountBalance);
     }
 
     private void replayFundsWithdrawn(FundsWithdrawnEvent event) {
         AccountBalance accountBalance = accountBalanceRepository.findById(event.accountId())
-                .orElse(null);
-        
+                .orElse(null); 
+
         if (accountBalance == null) {
-            log.error("Account not found: {}", event.accountId());
-            return;
+            log.error("accountBalance is null.");
+            return; 
         }
-        
+
         if (accountBalance.getProcessedEventIds().contains(event.eventId())) {
+            log.error("already processed");
             return;
         }
-        
+
         accountBalance.setCurrentBalance(accountBalance.getCurrentBalance().subtract(event.amount()));
         accountBalance.getProcessedEventIds().add(event.eventId());
         accountBalanceRepository.save(accountBalance);
     }
 
-    private Consumer<String, Object> createConsumer() {
+    private Consumer<String, Map> createReplayConsumer() {
         Map<String, Object> props = new HashMap<>();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, REPLAY_GROUP_ID + "-" + java.util.UUID.randomUUID());
-        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, REPLAY_GROUP_ID_PREFIX + UUID.randomUUID().toString()); 
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        props.put(JsonDeserializer.TRUSTED_PACKAGES, "ch.fdsgn.balance_service.event");
-        props.put(JsonDeserializer.USE_TYPE_INFO_HEADERS, true);
-        
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class.getName());
+
+        props.put(JsonDeserializer.USE_TYPE_INFO_HEADERS, false);
+        props.put(JsonDeserializer.VALUE_DEFAULT_TYPE, java.util.Map.class.getName());
+        props.put(JsonDeserializer.TRUSTED_PACKAGES, "java.util,java.lang,java.math"); 
+
         return new KafkaConsumer<>(props);
     }
 } 

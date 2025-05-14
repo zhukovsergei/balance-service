@@ -8,21 +8,19 @@ public record FundsWithdrawnEvent(
         UUID eventId,
         String accountId,
         BigDecimal amount,
-        Instant timestamp
+        Instant timestamp,
+        String eventType
 ) {
 
     public FundsWithdrawnEvent(String accountId, BigDecimal amount) {
-        this(UUID.randomUUID(), accountId, amount, Instant.now());
+        this(UUID.randomUUID(), accountId, amount, Instant.now(), "WITHDRAWAL");
     }
 
     public FundsWithdrawnEvent(UUID eventId, String accountId, BigDecimal amount, Instant timestamp) {
-        this.eventId = eventId;
-        this.accountId = accountId;
-        this.amount = amount;
-        this.timestamp = timestamp;
+        this(eventId, accountId, amount, timestamp, "WITHDRAWAL");
     }
 
     public FundsWithdrawnEvent(UUID eventId, String accountId, BigDecimal amount) {
-        this(eventId, accountId, amount, Instant.now());
+        this(eventId, accountId, amount, Instant.now(), "WITHDRAWAL");
     }
 } 

@@ -6,7 +6,6 @@ public record WithdrawFundsCommand(
         String accountId,
         BigDecimal amount
 ) {
-    // Валидация
     public WithdrawFundsCommand {
         if (accountId == null || accountId.isBlank()) {
             throw new IllegalArgumentException("Account ID cannot be blank");
