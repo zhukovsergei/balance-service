@@ -104,6 +104,9 @@ public class AccountEventStore {
                             }
                         } else if (timestampObj instanceof Instant) {
                             timestamp = (Instant) timestampObj;
+                        } else {
+                            log.error("Unsupported timestamp type");
+                            return;
                         }
 
                         if ("DEPOSIT".equals(eventType)) {

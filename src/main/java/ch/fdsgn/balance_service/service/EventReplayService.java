@@ -83,8 +83,10 @@ public class EventReplayService {
                             amount = new BigDecimal((String) amountObj);
                         } else if (amountObj instanceof BigDecimal) {
                             amount = (BigDecimal) amountObj;
+                        } else {
+                            log.error(" Unsupported amount type");
+                            return;
                         }
-
 
                         Object timestampObj = eventData.get("timestamp");
                         Instant timestamp;
@@ -97,11 +99,15 @@ public class EventReplayService {
                                 try {
                                     timestamp = Instant.ofEpochMilli(Long.parseLong((String) timestampObj));
                                 } catch (NumberFormatException nfe) {
+                                    log.error("Cannot parse timestamp string", nfe);
                                     return;
                                 }
                             }
                         } else if (timestampObj instanceof Instant) {
                             timestamp = (Instant) timestampObj;
+                        } else {
+                             log.error("Unsupported timestamp type");
+                            return;
                         }
 
                         if ("DEPOSIT".equals(eventType)) {
